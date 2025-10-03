@@ -1,0 +1,12 @@
+
+
+[
+  {
+    "name": "OK",
+    "fingers": { "Thumb": "Up", "Index": "Up", "Middle": "Up", "Ring": "Up", "Pinky": "Up" }
+  },
+  {
+    "name": "I Love You",
+    "fingers": { "Thumb": "Up", "Index": "Up", "Middle": "Down", "Ring": "Down", "Pinky": "Up" }
+  }
+]
