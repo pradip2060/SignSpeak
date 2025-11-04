@@ -9,25 +9,29 @@ const translationDictionary = {
 // Main translation function
 async function translateToJapanese() {
     const currentGesture = window.getCurrentGesture();
-    
+
+    console.log("Translating gesture:", currentGesture);
     if (!currentGesture) {
         alert("翻訳するジェスチャーが検出されていません。");
         return;
     }
-    
+
     const translateBtn = document.getElementById('translate-btn');
     const translationResult = document.getElementById('translation-result');
+    const gestureText = document.getElementById('gesture-text');
     const translationText = document.getElementById('translation-text');
-    
+    const langSelect = document.getElementById('lang-select'); // ✅ Added
+    const selectedLang = langSelect.value || 'ja-JP';          // ✅ Added
+
     // Show loading state
     translateBtn.disabled = true;
     translateBtn.textContent = '翻訳中...';
     translationText.innerHTML = '<span class="loading">翻訳中...</span>';
     translationResult.style.display = 'block';
-    
+
     try {
         let translatedText;
-        
+
         // Check if we have a predefined translation
         if (translationDictionary[currentGesture]) {
             translatedText = translationDictionary[currentGesture];
@@ -35,14 +39,22 @@ async function translateToJapanese() {
             // Use API for unknown gestures
             translatedText = await translateText(currentGesture, 'en', 'ja');
         }
-        
-        translationText.innerHTML = `<strong>${translatedText}</strong>`;
-        
-        // Add to history
+
+        gestureText.innerHTML = currentGesture;
+        translationText.innerHTML = translatedText;
+
+        // Add to on-page history list (old behavior)
         if (window.addToHistory) {
             window.addToHistory(`翻訳: ${currentGesture} → ${translatedText}`);
         }
-        
+
+        // ✅ Save translation to database history
+        if (typeof saveHistory === "function") {
+            saveHistory(currentGesture, translatedText, selectedLang);
+        } else {
+            console.warn("⚠️ saveHistory function not found — check history.js");
+        }
+
     } catch (error) {
         console.error('Translation error:', error);
         translationText.innerHTML = '<span class="error">翻訳に失敗しました。後でもう一度お試しください。</span>';
@@ -58,14 +70,11 @@ async function translateText(text, sourceLang, targetLang) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
     
     const response = await fetch(url);
-    
     if (!response.ok) {
         throw new Error('Translation API error');
     }
-    
+
     const data = await response.json();
-    
-    // Extract translated text from the response
     let translatedText = '';
     if (data && data[0]) {
         data[0].forEach(item => {
@@ -74,7 +83,7 @@ async function translateText(text, sourceLang, targetLang) {
             }
         });
     }
-    
+
     return translatedText || text;
 }
 

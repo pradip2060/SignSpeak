@@ -41,52 +41,47 @@ function speakCurrentGesture() {
     const voices = window.speechSynthesis.getVoices(2);
     let preferredVoice = null;
     
-    // Look for American English male voices
     const preferredVoices = [
-        'Microsoft David Desktop', // Windows - American male
-        'Google US English',       // Chrome - American
-        'Alex',                    // Safari - American male
-        'Daniel',                  // Edge - Male voice
-        'en-us',                   // Generic US English
-        'english',                 // Generic English
+        'Microsoft David Desktop',
+        'Google US English',
+        'Alex',
+        'Daniel',
+        'en-us',
+        'english',
     ];
     
     for (let voice of voices) {
-        // Check if voice matches our preferred list and is American English
         if ((voice.lang.includes('en-US') || voice.lang.includes('en_US')) && 
             !voice.name.includes('Female') && 
             !voice.name.includes('female')) {
             
-            // Check if it's one of our preferred voices
             if (preferredVoices.some(pref => voice.name.includes(pref))) {
                 preferredVoice = voice;
                 break;
             }
-            
-            // If no preferred voice found yet, take any American male voice
             if (!preferredVoice) {
                 preferredVoice = voice;
             }
         }
     }
     
-    // If we found a preferred voice, use it
     if (preferredVoice) {
         utter.voice = preferredVoice;
         console.log(`Using voice: ${preferredVoice.name}`);
     } else if (voices.length > 0) {
-        // Fallback to first available voice
         utter.voice = voices[0];
         console.log(`Fallback voice: ${voices[0].name}`);
     }
     
-    // Speak the cleaned gesture text only once
+    // Speak the cleaned gesture text
     window.speechSynthesis.speak(utter);
+    
+    // ✅ Save to history after speaking
+    saveHistory(cleanText, cleanText, lang);
     
     // Handle voice loading if voices aren't immediately available
     if (speechSynthesis.getVoices().length === 0) {
         speechSynthesis.addEventListener('voiceschanged', function() {
-            // Re-run the function when voices are loaded
             const newCurrentGesture = window.getCurrentGesture();
             if (newCurrentGesture) {
                 speakCurrentGesture();

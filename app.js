@@ -1,18 +1,19 @@
 // Gesture detection and hand tracking logic
 let cvReady = false;
 let currentGesture = null;
+let currentLeftGesture = null;
+let currentRightGesture = null;
 let isDebug = false;
-const SEND_INTERVAL = 1000; // 1秒ごとに送信
+const SEND_INTERVAL = 2000;
 let lastSentTime = 0;
 
-let currentMode = 'local'; // default: local
+let currentMode = 'local';
 
 if (typeof cv !== 'undefined') {
   cv['onRuntimeInitialized'] = () => { cvReady = true; };
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  // モード選択：ローカルモード or サーバモード
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) {
     modeSelect.addEventListener('change', (e) => {
@@ -21,25 +22,21 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // カメラ開始ボタン
   document.getElementById('start-btn').onclick = startCamera;
 
-  // MediaPipe Handsの初期化
   const hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
   });
 
   hands.setOptions({
-    maxNumHands: 1,
+    maxNumHands: 2,
     modelComplexity: 1,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
+    minDetectionConfidence: 0.7, // Increased for better accuracy
+    minTrackingConfidence: 0.7,  // Increased for better accuracy
   });
 
-  // 手の検出結果のコールバック
   hands.onResults(onResults);
 
-  // カメラのセットアップ
   let camera;
   function startCamera() {
     const webcamElem = document.getElementById('webcam');
@@ -64,16 +61,37 @@ document.addEventListener('DOMContentLoaded', function () {
   window.startCamera = startCamera;
 });
 
-// ... existing gesture recognition functions (getFingerStates, onResults, drawHand, etc.)
 function getFingerStates(landmarks) {
   const fingerTips = [4, 8, 12, 16, 20];
   const fingerPips = [2, 6, 10, 14, 18];
+  const fingerMCPs = [1, 5, 9, 13, 17]; // Knuckles for better thumb detection
   const fingerNames = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+  
   let states = {};
-  states['Thumb'] = landmarks[4].x > landmarks[3].x ? 'Up' : 'Down';
+  
+  // Improved thumb detection
+  const thumbIP = landmarks[3];
+  const thumbTip = landmarks[4];
+  states['Thumb'] = thumbTip.x < thumbIP.x ? 'Up' : 'Down';
+  
+  // Improved finger detection with better thresholds
   for (let i = 1; i < 5; i++) {
-    states[fingerNames[i]] = landmarks[fingerTips[i]].y < landmarks[fingerPips[i]].y ? 'Up' : 'Down';
+    const tip = landmarks[fingerTips[i]];
+    const pip = landmarks[fingerPips[i]];
+    const mcp = landmarks[fingerMCPs[i]];
+    
+    // More accurate finger state detection
+    const tipToPip = Math.abs(tip.y - pip.y);
+    const pipToMcp = Math.abs(pip.y - mcp.y);
+    
+    // Use relative position with adaptive threshold
+    if (tip.y < pip.y - (pipToMcp * 0.1)) {
+      states[fingerNames[i]] = 'Up';
+    } else {
+      states[fingerNames[i]] = 'Down';
+    }
   }
+  
   return states;
 }
 
@@ -81,39 +99,84 @@ function onResults(results) {
   const textElem = document.getElementById("translated-text");
   const canvasElem = document.getElementById("cv-canvas");
   const ctx = canvasElem.getContext("2d");
+  
+  // Clear canvas properly
   ctx.clearRect(0, 0, canvasElem.width, canvasElem.height);
+  
+  // Set canvas dimensions to match video
+  if (results.image) {
+    canvasElem.width = results.image.width;
+    canvasElem.height = results.image.height;
+  }
 
+  currentLeftGesture = null;
+  currentRightGesture = null;
+  
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const landmarks = results.multiHandLandmarks[0];
-    const fingerStates = getFingerStates(landmarks);
-
+    const hands = results.multiHandLandmarks.length;
+    const handedness = results.multiHandedness;
+    
+    let leftHandLandmarks = null;
+    let rightHandLandmarks = null;
+    
+    for (let i = 0; i < hands; i++) {
+      if (handedness[i].label === 'Left') {
+        leftHandLandmarks = results.multiHandLandmarks[i];
+      } else if (handedness[i].label === 'Right') {
+        rightHandLandmarks = results.multiHandLandmarks[i];
+      }
+    }
+    
     if (currentMode === 'local') {
-      // ===== Local mode =====
-      const gesture = recognizeGesture(landmarks, fingerStates);
-      handleRecognizedGesture(gesture, fingerStates, landmarks, ctx, canvasElem);
+      let combinedGesture = null;
+      
+      if (leftHandLandmarks) {
+        const leftFingerStates = getFingerStates(leftHandLandmarks);
+        currentLeftGesture = recognizeGesture(leftHandLandmarks, leftFingerStates, 'left');
+        drawHand(ctx, leftHandLandmarks, canvasElem.width, canvasElem.height, leftFingerStates);
+      }
+      
+      if (rightHandLandmarks) {
+        const rightFingerStates = getFingerStates(rightHandLandmarks);
+        currentRightGesture = recognizeGesture(rightHandLandmarks, rightFingerStates, 'right');
+        drawHand(ctx, rightHandLandmarks, canvasElem.width, canvasElem.height, rightFingerStates);
+      }
+      
+      if (leftHandLandmarks && rightHandLandmarks) {
+        combinedGesture = recognizeTwoHandGesture(leftHandLandmarks, rightHandLandmarks);
+      }
+      
+      const finalGesture = combinedGesture || currentLeftGesture || currentRightGesture;
+      handleRecognizedGesture(finalGesture, ctx, canvasElem);
+      
     } else if (currentMode === 'server') {
-      // ===== Server mode =====
       const now = Date.now();
       if (now - lastSentTime > SEND_INTERVAL) {
         lastSentTime = now;
         sendFrameToServer(canvasElem)
-          .then(gesture => handleRecognizedGesture(gesture, fingerStates, landmarks, ctx, canvasElem))
+          .then(gesture => handleRecognizedGesture(gesture, ctx, canvasElem))
           .catch(err => {
             console.error('Server recognition failed:', err);
             textElem.innerHTML = "<em>Server recognition error...</em>";
           });
       } else {
-        // 最新結果を描画だけする
-        drawHand(ctx, landmarks, canvasElem.width, canvasElem.height, fingerStates);
+        if (leftHandLandmarks) {
+          const leftFingerStates = getFingerStates(leftHandLandmarks);
+          drawHand(ctx, leftHandLandmarks, canvasElem.width, canvasElem.height, leftFingerStates);
+        }
+        if (rightHandLandmarks) {
+          const rightFingerStates = getFingerStates(rightHandLandmarks);
+          drawHand(ctx, rightHandLandmarks, canvasElem.width, canvasElem.height, rightFingerStates);
+        }
       }
     }
   } else {
     currentGesture = null;
-    textElem.innerHTML = "<em>Looking for hand...</em>";
+    textElem.innerHTML = "<em>Looking for hands...</em>";
   }
 }
 
-function handleRecognizedGesture(gesture, fingerStates, landmarks, ctx, canvasElem) {
+function handleRecognizedGesture(gesture, ctx, canvasElem) {
   const textElem = document.getElementById("translated-text");
 
   if (gesture) {
@@ -127,47 +190,60 @@ function handleRecognizedGesture(gesture, fingerStates, landmarks, ctx, canvasEl
   } else {
     currentGesture = null;
     if (isDebug) {
-      let stateStr = Object.entries(fingerStates)
-        .map(([finger, state]) => `${finger}: <b>${state}</b>`)
-        .join(" | ");
-      textElem.innerHTML = `<em>No known gesture...</em><br>${stateStr}`;
+      let debugText = "No known gesture...";
+      if (currentLeftGesture) debugText += ` Left: ${currentLeftGesture}`;
+      if (currentRightGesture) debugText += ` Right: ${currentRightGesture}`;
+      textElem.innerHTML = `<em>${debugText}</em>`;
+    } else {
+      textElem.innerHTML = "<em>No known gesture...</em>";
     }
-
   }
-
-  drawHand(ctx, landmarks, canvasElem.width, canvasElem.height, fingerStates);
 }
 
 function drawHand(ctx, landmarks, w, h, fingerStates) {
   const connections = [
-    [0, 1], [1, 2], [2, 3], [3, 4],
-    [0, 5], [5, 6], [6, 7], [7, 8],
-    [0, 9], [9, 10], [10, 11], [11, 12],
-    [0, 13], [13, 14], [14, 15], [15, 16],
-    [0, 17], [17, 18], [18, 19], [19, 20]
+    [0, 1], [1, 2], [2, 3], [3, 4],           // Thumb
+    [0, 5], [5, 6], [6, 7], [7, 8],           // Index
+    [0, 9], [9, 10], [10, 11], [11, 12],      // Middle
+    [0, 13], [13, 14], [14, 15], [15, 16],    // Ring
+    [0, 17], [17, 18], [18, 19], [19, 20],    // Pinky
+    [5, 9], [9, 13], [13, 17]                 // Palm
   ];
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "#0078D7";
+  
+  // Improved drawing with smaller, more precise elements
+  ctx.lineWidth = 2; // Thinner lines
+  ctx.strokeStyle = "#FF0000";
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  // Draw connections
   connections.forEach(([a, b]) => {
     ctx.beginPath();
     ctx.moveTo(landmarks[a].x * w, landmarks[a].y * h);
     ctx.lineTo(landmarks[b].x * w, landmarks[b].y * h);
     ctx.stroke();
   });
+  
+  // Draw landmarks with different sizes based on importance
   for (let i = 0; i < landmarks.length; i++) {
     const px = landmarks[i].x * w;
     const py = landmarks[i].y * h;
+    
+    let dotSize = 3; // Much smaller default dots
+    
+    // Key points get slightly larger dots
+    if (i === 0) dotSize = 4; // Palm base
+    if (i === 4 || i === 8 || i === 12 || i === 16 || i === 20) dotSize = 4; // Finger tips
+    
     ctx.beginPath();
-    ctx.arc(px, py, 8, 0, 2 * Math.PI);
-    let color = "#0078D7";
-    if (i === 4 && fingerStates.Thumb === "Up") color = "#00C853";
-    if (i === 8 && fingerStates.Index === "Up") color = "#00C853";
-    if (i === 12 && fingerStates.Middle === "Up") color = "#00C853";
-    if (i === 16 && fingerStates.Ring === "Up") color = "#00C853";
-    if (i === 20 && fingerStates.Pinky === "Up") color = "#00C853";
-    ctx.fillStyle = color;
+    ctx.arc(px, py, dotSize, 0, 2 * Math.PI);
+    
+    ctx.fillStyle = "#FF0000";
     ctx.fill();
-    ctx.strokeStyle = "#fff";
+    
+    // Optional: Add subtle white border for better visibility
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 1;
     ctx.stroke();
   }
 }
@@ -191,82 +267,280 @@ function processWithOpenCV(videoElem, canvasElem) {
   dst.delete();
 }
 
-function recognizeGesture(landmarks, fingerStates) {
+function recognizeGesture(landmarks, fingerStates, handType) {
   const thumbTip = landmarks[4];
   const indexTip = landmarks[8];
-  const dist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+  const middleTip = landmarks[12];
+  const ringTip = landmarks[16];
+  const pinkyTip = landmarks[20];
+  const wrist = landmarks[0];
 
-  if (dist < 0.05 && fingerStates.Middle === "Up" && fingerStates.Ring === "Up" && fingerStates.Pinky === "Up") {
-    if (landmarks[0].y < landmarks[9].y) {
-      return "OK";
-    } else {
-      return "NO (upside down)";
-    }
+  // Calculate more accurate distances
+  const distThumbIndex = Math.sqrt(
+    Math.pow(thumbTip.x - indexTip.x, 2) + 
+    Math.pow(thumbTip.y - indexTip.y, 2)
+  );
+  
+  const distThumbMiddle = Math.sqrt(
+    Math.pow(thumbTip.x - middleTip.x, 2) + 
+    Math.pow(thumbTip.y - middleTip.y, 2)
+  );
+  
+  const distIndexMiddle = Math.sqrt(
+    Math.pow(indexTip.x - middleTip.x, 2) + 
+    Math.pow(indexTip.y - middleTip.y, 2)
+  );
+
+  // Improved gesture recognition with better thresholds
+  const handSize = Math.sqrt(
+    Math.pow(wrist.x - middleTip.x, 2) + 
+    Math.pow(wrist.y - middleTip.y, 2)
+  );
+
+  // Use relative thresholds based on hand size
+  const closeThreshold = handSize * 0.15;
+  const veryCloseThreshold = handSize * 0.08;
+
+  // Gesture recognition with improved logic
+  if (distThumbIndex < veryCloseThreshold && 
+      fingerStates.Middle === "Up" && 
+      fingerStates.Ring === "Up" && 
+      fingerStates.Pinky === "Up") {
+    return "OK";
   }
-  if (fingerStates.Thumb === "Up" &&
-    fingerStates.Index === "Up" &&
-    fingerStates.Pinky === "Up" &&
-    fingerStates.Middle === "Down" &&
-    fingerStates.Ring === "Down") {
-    return "I Love You 🤟";
+
+  if (fingerStates.Thumb === "Up" && 
+      fingerStates.Index === "Up" && 
+      fingerStates.Pinky === "Up" && 
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down") {
+    return "I Love You";
   }
-  if (fingerStates.Index === "Down" &&
-    fingerStates.Middle === "Down" &&
-    fingerStates.Ring === "Down" &&
-    fingerStates.Pinky === "Down") {
-    return "Fist ✊";
+
+  if (fingerStates.Index === "Down" && 
+      fingerStates.Middle === "Down" &&
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "Fist (No/Stop)";
   }
+
+  if (fingerStates.Thumb === "Up" && 
+      fingerStates.Index === "Up" &&
+      fingerStates.Middle === "Up" && 
+      fingerStates.Ring === "Up" && 
+      fingerStates.Pinky === "Up") {
+    return "Hello/Hi";
+  }
+
+  if (fingerStates.Thumb === "Up" && 
+      fingerStates.Index === "Down" && 
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "Yes/Good";
+  }
+
+  if (fingerStates.Thumb === "Down" && 
+      fingerStates.Index === "Down" && 
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "No/Bad";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Up" &&
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down" && 
+      fingerStates.Thumb === "Down") {
+    return "Peace/Victory";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Down" &&
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "Point/You";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Up" &&
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down" && 
+      fingerStates.Thumb === "Up") {
+    return "Thank You";
+  }
+
+  if (fingerStates.Pinky === "Up" && 
+      fingerStates.Thumb === "Up" &&
+      fingerStates.Index === "Down" && 
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down") {
+    return "Call Me";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Pinky === "Up" &&
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down" && 
+      fingerStates.Thumb === "Up") {
+    return "Rock On";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Up" && 
+      fingerStates.Ring === "Up" && 
+      fingerStates.Thumb === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "Three";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Up" && 
+      fingerStates.Ring === "Up" && 
+      fingerStates.Pinky === "Up" && 
+      fingerStates.Thumb === "Down") {
+    return "Four";
+  }
+
+  if (distThumbMiddle < closeThreshold && 
+      fingerStates.Index === "Up" && 
+      fingerStates.Middle === "Up" && 
+      fingerStates.Ring === "Up") {
+    return "Spider-man";
+  }
+
+  if (fingerStates.Index === "Up" && 
+      fingerStates.Thumb === "Up" &&
+      fingerStates.Middle === "Down" && 
+      fingerStates.Ring === "Down" && 
+      fingerStates.Pinky === "Down") {
+    return "Gun";
+  }
+
   return null;
 }
 
-// Make currentGesture available globally for other modules
+function recognizeTwoHandGesture(leftLandmarks, rightLandmarks) {
+  const leftFingerStates = getFingerStates(leftLandmarks);
+  const rightFingerStates = getFingerStates(rightLandmarks);
+  
+  const leftIndexTip = leftLandmarks[8];
+  const rightIndexTip = rightLandmarks[8];
+  const leftWrist = leftLandmarks[0];
+  const rightWrist = rightLandmarks[0];
+  
+  const distBetweenHands = Math.sqrt(
+    Math.pow(leftWrist.x - rightWrist.x, 2) + 
+    Math.pow(leftWrist.y - rightWrist.y, 2)
+  );
+  
+  const distLeftRightIndex = Math.sqrt(
+    Math.pow(leftIndexTip.x - rightIndexTip.x, 2) + 
+    Math.pow(leftIndexTip.y - rightIndexTip.y, 2)
+  );
+
+  // Two hand gestures with improved thresholds
+  if (distBetweenHands < 0.2 && 
+      leftFingerStates.Index === "Up" && 
+      rightFingerStates.Index === "Up" &&
+      leftFingerStates.Middle === "Up" && 
+      rightFingerStates.Middle === "Up") {
+    return "Pray/Thank You";
+  }
+
+  if (distLeftRightIndex < 0.08 && 
+      leftFingerStates.Index === "Up" && 
+      rightFingerStates.Index === "Up" &&
+      leftFingerStates.Thumb === "Up" && 
+      rightFingerStates.Thumb === "Up") {
+    return "Heart/Love";
+  }
+
+  if (distBetweenHands < 0.15 && 
+      leftFingerStates.Index === "Up" && 
+      rightFingerStates.Index === "Up" &&
+      leftFingerStates.Middle === "Up" && 
+      rightFingerStates.Middle === "Up") {
+    return "Clap/Applaud";
+  }
+
+  if (distBetweenHands < 0.1 && 
+      leftFingerStates.Index === "Up" && 
+      rightFingerStates.Index === "Up") {
+    return "Handshake/Agree";
+  }
+
+  if (leftFingerStates.Index === "Up" && 
+      leftFingerStates.Middle === "Up" &&
+      leftFingerStates.Ring === "Up" && 
+      leftFingerStates.Pinky === "Up" &&
+      rightFingerStates.Index === "Up" && 
+      rightFingerStates.Middle === "Up" &&
+      rightFingerStates.Ring === "Up" && 
+      rightFingerStates.Pinky === "Up" &&
+      distBetweenHands < 0.3) {
+    return "Welcome/Open";
+  }
+
+  if (leftFingerStates.Thumb === "Up" && 
+      rightFingerStates.Thumb === "Down" &&
+      leftFingerStates.Index === "Down" && 
+      rightFingerStates.Index === "Down") {
+    return "Mixed/Unsure";
+  }
+
+  return null;
+}
+
+// Make functions available globally
 window.getCurrentGesture = function () {
   return currentGesture;
 };
 
-// Make addToHistory available globally
+window.getLeftGesture = function () {
+  return currentLeftGesture;
+};
+
+window.getRightGesture = function () {
+  return currentRightGesture;
+};
+
 window.addToHistory = addToHistory;
 
-// ADD THIS: Connect translate button after DOM is fully loaded
+// Connect translate button
 document.addEventListener('DOMContentLoaded', function () {
-  // Wait a bit for translate.js to load, then connect the button
   setTimeout(() => {
     const translateBtn = document.getElementById('translate-btn');
     if (translateBtn && window.translateToJapanese) {
       translateBtn.onclick = window.translateToJapanese;
     } else {
-      console.error('Translate button or function not found');
-      // Fallback: add basic translation functionality
       translateBtn.onclick = function () {
         const gesture = window.getCurrentGesture();
         if (!gesture) {
-          alert("翻訳するジェスチャーが検出されていません。");
+          alert("No gesture detected for translation.");
           return;
         }
-        alert("翻訳機能を読み込んでいます...");
+        alert("Loading translation function...");
       };
     }
   }, 100);
 });
 
-
-// サーバーモード用：フレームをFastAPIサーバーに送信してジェスチャーを取得
+// Server mode function
 async function sendFrameToServer(canvasElem) {
   const videoElem = document.getElementById('webcam');
 
-  // === 修正点: 実際の映像を描くための一時キャンバスを作成 ===
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = videoElem.videoWidth || 640;
   tempCanvas.height = videoElem.videoHeight || 480;
   const tempCtx = tempCanvas.getContext('2d');
   tempCtx.drawImage(videoElem, 0, 0, tempCanvas.width, tempCanvas.height);
 
-  // === この一時キャンバスをJPEG化して送信 ===
   const blob = await new Promise(resolve => tempCanvas.toBlob(resolve, 'image/jpeg', 0.9));
   const formData = new FormData();
   formData.append('file', blob, 'frame.jpg');
 
-  // FastAPI側のURLに合わせる
   const url = "http://127.0.0.1:8000/predict";
   const response = await fetch(url, {
     method: 'POST',
@@ -276,6 +550,5 @@ async function sendFrameToServer(canvasElem) {
   if (!response.ok) throw new Error('Network error');
   const data = await response.json();
 
-  // FastAPI側の返り値 { "gesture": "Hello" } を想定
   return data.label || null;
 }

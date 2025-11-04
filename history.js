@@ -1,95 +1,60 @@
-// history.js - Handles database operations
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Attach event to 履歴 button
-    document.getElementById("history-btn").addEventListener("click", handleHistory);
-});
-
-// Handle history button click
-async function handleHistory() {
+async function addToHistory() {
+    console.log("Saving history...");
     try {
-        console.log('Loading history from database...');
-        
-        const response = await fetch('get_history.php');
-        
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
-        }
-        
-        const result = await response.text();
-        console.log('Raw response:', result);
-        
-        // Check if response is valid JSON
-        let history;
-        try {
-            history = JSON.parse(result);
-        } catch (e) {
-            throw new Error('Invalid JSON response from server');
-        }
-        
-        // Check if it's an error response
-        if (history.error) {
-            throw new Error(history.error);
-        }
-        
-        displayDatabaseHistory(history);
-        
-    } catch (error) {
-        console.error('Error loading history:', error);
-        alert("エラー: " + error.message);
-    }
-}
+        const gesture_text = document.getElementById('gesture-text').innerText || '';
+        const translated_text = document.getElementById('translation-text')?.innerText || '';
+        const lang_code = '';
 
-// Display history from database
-function displayDatabaseHistory(history) {
-    const historyList = document.getElementById('history-list');
-    historyList.innerHTML = '';
-    
-    if (!Array.isArray(history)) {
-        historyList.innerHTML = '<li>データベース応答が不正です</li>';
-        return;
-    }
-    
-    if (history.length === 0) {
-        historyList.innerHTML = '<li>データベースに履歴がありません</li>';
-        return;
-    }
-    
-    history.forEach(item => {
-        const li = document.createElement('li');
-        const date = new Date(item.timestamp).toLocaleString('ja-JP');
-        li.textContent = `${date}: ${item.text}`;
-        historyList.appendChild(li);
-    });
-}
-
-// Function to save current gesture to database
-async function saveCurrentGestureToDatabase() {
-    const currentGesture = window.getCurrentGesture();
-    
-    if (!currentGesture) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('save_history.php', {
+        const sendData = {
+            gesture_text,
+            translated_text,
+            lang_code,
+        }
+        console.log(gesture_text, translated_text, lang_code);
+        const response = await fetch('./api/history/save.php', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                text: `Gesture: ${currentGesture}`,
-                timestamp: new Date().toISOString()
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sendData)
         });
-        
-        const result = await response.text();
-        console.log('Save result:', result);
-        
-    } catch (error) {
-        console.error('Error saving to database:', error);
+
+        const data = await response.json();
+        if (!data.success) {
+            console.error("Failed to save history:", data.message);
+        }
+    } catch (err) {
+        console.error("Error saving history:", err);
     }
 }
 
-// Make save function available globally
-window.saveCurrentGestureToDatabase = saveCurrentGestureToDatabase;
+async function loadHistory() {
+    try {
+        const response = await fetch('get_history.php');
+        const data = await response.json();
+
+        const list = document.getElementById('history-list');
+        list.innerHTML = '';
+
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.action} (${item.created_at})`;
+                list.appendChild(li);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.textContent = "No history yet.";
+            list.appendChild(li);
+        }
+    } catch (err) {
+        console.error("Error loading history:", err);
+    }
+}
+
+// Attach to window
+// window.loadHistory = loadHistory;
+
+
+const historyBtn = document.getElementById('history-save-btn');
+if (historyBtn) {
+    historyBtn.addEventListener('click', addToHistory);
+}
