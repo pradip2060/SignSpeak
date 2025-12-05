@@ -1,0 +1,7 @@
+CREATE TABLE history (
+    id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    gesture_text VARCHAR(512) NOT NULL COMMENT 'ジェスチャー認識テキスト',
+    translated_text VARCHAR(512) DEFAULT NULL COMMENT '翻訳済みテキスト',
+    lang_code VARCHAR(10) NOT NULL COMMENT '言語コード',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '作成日時'
+);
