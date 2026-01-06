@@ -14,6 +14,7 @@ const RECORD_TIME_LIMIT = 3.0;
 const recordBtn = document.getElementById('record-btn');
 const modeSelect = document.getElementById('mode-select');
 const startBtn = document.getElementById('start-btn');
+const translateBtn = document.getElementById('translate-btn');
 const indicator = document.getElementById('recording-indicator');
 const timerDisplay = document.getElementById('timer');
 
@@ -82,6 +83,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
   startBtn.onclick = startCamera;
   if (recordBtn) recordBtn.onclick = startRecordingSequence;
+
+  // --- 翻訳ボタンの処理 ---
+  if (translateBtn) {
+    translateBtn.addEventListener('click', () => {
+      // translate.js で定義したグローバル関数を呼び出す
+      if (typeof window.translateToJapanese === 'function') {
+        window.translateToJapanese();
+      }
+    });
+  }
 });
 
 // ==============================
