@@ -11,6 +11,12 @@ let currentMode = 'local';
 const api_url = API_URL;
 const RECORD_TIME_LIMIT = 3.0;
 
+const recordBtn = document.getElementById('record-btn');
+const modeSelect = document.getElementById('mode-select');
+const startBtn = document.getElementById('start-btn');
+const indicator = document.getElementById('recording-indicator');
+const timerDisplay = document.getElementById('timer');
+
 console.log("API URL:", api_url);
 
 // サポートされているMimeTypeを選択
@@ -24,15 +30,11 @@ function getSupportedMimeType() {
 // 2. メイン初期化処理
 // ==============================
 document.addEventListener('DOMContentLoaded', function () {
-  const modeSelect = document.getElementById('mode-select');
-  const recordBtn = document.getElementById('record-btn');
-  const startBtn = document.getElementById('start-btn');
 
   if (modeSelect) {
     modeSelect.addEventListener('change', (e) => {
       currentMode = e.target.value;
       const textElem = document.getElementById("translated-text");
-      const recordBtn = document.getElementById('record-btn');
 
       if (currentMode === 'server') {
         // サーバーモード切替時
@@ -86,11 +88,9 @@ document.addEventListener('DOMContentLoaded', function () {
 // 3. 録画・通信ロジック
 // ==============================
 function startRecordingSequence() {
-  const indicator = document.getElementById('recording-indicator');
-  const timerDisplay = document.getElementById('timer');
-  const recordBtn = document.getElementById('record-btn');
-
   recordBtn.disabled = true;
+
+  // 3秒カウントダウン
   let count = 3;
   indicator.style.display = "block";
   indicator.style.color = "#0078D7";
@@ -104,9 +104,6 @@ function startRecordingSequence() {
 }
 
 function startActualRecording() {
-  const recordBtn = document.getElementById('record-btn');
-  const indicator = document.getElementById('recording-indicator');
-  const timerDisplay = document.getElementById('timer');
   recordedChunks = [];
   mediaRecorder.start();
   startTime = Date.now();
@@ -122,10 +119,9 @@ function startActualRecording() {
 function stopRecordingSequence() {
   clearInterval(timerInterval);
   mediaRecorder.stop();
-  const recordBtn = document.getElementById('record-btn');
   document.getElementById('recording-indicator').style.display = "none";
   recordBtn.disabled = false;
-  recordBtn.textContent = "録画して解析";
+  recordBtn.textContent = "録画開始";
 }
 
 async function uploadVideo(blob) {
@@ -140,6 +136,10 @@ async function uploadVideo(blob) {
     const data = await response.json();
     currentGesture = data.label;
 
+    // 音声合成を呼び出す
+    speakCurrentGesture();
+
+    // 結果表示と履歴追加
     textElem.innerHTML = data.label;
     addToHistory(data.label);
   } catch (e) { textElem.innerHTML = "サーバー接続エラー"; }
