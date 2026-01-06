@@ -4,6 +4,7 @@
 ?>
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,6 +20,7 @@
       padding: 0;
       font-family: 'Inter', sans-serif;
     }
+
     body {
       background-color: #FFFFFF;
       display: flex;
@@ -26,6 +28,7 @@
       height: 100vh;
       color: #000000;
     }
+
     header {
       background-color: #FFFFFF;
       color: #0078D7;
@@ -36,10 +39,12 @@
       position: relative;
       border-bottom: 2px solid #F4F4F4;
     }
+
     main {
       display: flex;
       flex: 1;
     }
+
     .camera-panel {
       flex: 1;
       background: #fff;
@@ -50,12 +55,14 @@
       justify-content: center;
       border-right: 2px solid #F4F4F4;
     }
+
     video {
       width: 90%;
       max-width: 600px;
       border: 4px solid #0078D7;
       border-radius: 10px;
     }
+
     .output-panel {
       flex: 1;
       padding: 1.5rem;
@@ -63,20 +70,24 @@
       flex-direction: column;
       justify-content: space-between;
     }
+
     .text-output {
       font-size: 2rem;
       font-weight: bold;
       color: #000000;
       margin-bottom: 2rem;
     }
+
     #translated-text em {
       color: #666666;
     }
+
     .controls {
       display: flex;
       gap: 1rem;
       flex-wrap: wrap;
     }
+
     button {
       padding: 0.75rem 1.5rem;
       border: none;
@@ -90,14 +101,17 @@
       flex: 1;
       min-width: 120px;
     }
+
     button:hover {
       background-color: #0078D7;
       color: #fff;
     }
+
     button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
+
     footer {
       background: #F4F4F4;
       padding: 0.75rem;
@@ -105,6 +119,7 @@
       font-size: 0.9rem;
       color: #666666;
     }
+
     .history-box {
       background: #F4F4F4;
       border: 2px solid #0078D7;
@@ -115,6 +130,7 @@
       margin-top: 1rem;
       color: #666666;
     }
+
     #history-list {
       margin: 0;
       padding-left: 1.2rem;
@@ -122,6 +138,7 @@
       font-size: 1rem;
       list-style: disc inside;
     }
+
     #lang-select {
       position: absolute;
       top: 1rem;
@@ -134,10 +151,12 @@
       color: #0078D7;
       font-weight: bold;
     }
+
     #lang-select:focus {
       outline: none;
       border-color: #0078D7;
     }
+
     .translation-result {
       margin-top: 1rem;
       padding: 1rem;
@@ -145,14 +164,17 @@
       border-radius: 8px;
       border: 1px solid #0078D7;
     }
+
     .translation-result h3 {
       color: #0078D7;
       margin-bottom: 0.5rem;
     }
+
     .loading {
       color: #0078D7;
       font-style: italic;
     }
+
     .error {
       color: #ff4444;
     }
@@ -173,6 +195,10 @@
       <div style="position:relative; width:90%; max-width:600px;">
         <video id="webcam" autoplay playsinline style="width:100%;"></video>
         <canvas id="cv-canvas" style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none;"></canvas>
+
+        <div id="recording-indicator" style="display: none; position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 5px; z-index: 10;">
+          <span id="indicator-text">●</span> <span id="timer">0.0</span>
+        </div>
       </div>
     </div>
 
@@ -186,13 +212,30 @@
         <div id="translation-text"></div>
       </div>
 
-      <select id="mode-select">
-        <option value="local">ローカルプログラムモード</option>
-        <option value="server">機械学習モード</option>
-      </select>
+      <div id="mode-select" class="mode-container">
+        <label class="mode-label">
+          <input type="radio" name="mode" value="local" checked>
+          <span>ローカルプログラムモード</span>
+        </label>
+        <label class="mode-label">
+          <input type="radio" name="mode" value="server">
+          <span>機械学習モード</span>
+        </label>
+      </div>
 
       <div class="controls">
-        <button id="start-btn">カメラ開始</button>
+        <div class="controls">
+          <button id="start-btn">カメラ開始</button>
+          <button id="record-btn" disabled style="display: none; background-color: #fff; border-color: #ff4444; color: #ff4444;">
+            録画開始
+          </button>
+          <button id="history-save-btn">履歴保存</button>
+        </div>
+
+        <div id="recording-indicator" style="display: none; color: #ff4444; font-weight: bold; margin-top: 5px;">
+          ● 録画中... <span id="record-timer">0.0</span>s
+        </div>
+
         <button id="speak-btn">話す</button>
         <button id="translate-btn">翻訳</button>
         <button id="history-save-btn">履歴保存</button>
@@ -208,6 +251,8 @@
   <script src="translate.js" defer></script>
   <script src="speak.js" defer></script>
   <script src="history.js" defer></script>
+  <script src="gesture-logic.js"></script>
   <script src="app.js" defer></script>
 </body>
+
 </html>
