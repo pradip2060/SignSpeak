@@ -8,8 +8,10 @@ let timerInterval;
 let countdownInterval;
 let currentGesture = "";
 let currentMode = 'local';
-const url = "http://localhost:8000/predict";
+const api_url = API_URL;
 const RECORD_TIME_LIMIT = 3.0;
+
+console.log("API URL:", api_url);
 
 // サポートされているMimeTypeを選択
 function getSupportedMimeType() {
@@ -132,11 +134,13 @@ async function uploadVideo(blob) {
   const formData = new FormData();
   formData.append("file", blob, "capture.webm");
   try {
+    const url = api_url + "predict";
+    console.log("Uploading to: " + url);
     const response = await fetch(url, { method: "POST", body: formData });
     const data = await response.json();
     currentGesture = data.label;
 
-    textElem.innerHTML = `🤖 Prediction: <b>${data.label}</b> (${(data.probability * 100).toFixed(1)}%)`;
+    textElem.innerHTML = data.label;
     addToHistory(data.label);
   } catch (e) { textElem.innerHTML = "サーバー接続エラー"; }
 }
@@ -171,8 +175,8 @@ function onResults(results) {
       const final = combined || leftG || rightG;
       if (final) {
         currentGesture = final;
+        textElem.innerHTML = currentGesture;
       }
-      if (final) textElem.innerHTML = `🖐️ Local: <b>${final}</b>`;
     }
   }
 }
@@ -185,6 +189,6 @@ function addToHistory(t) {
   list.prepend(li);
 }
 
-window.getCurrentGesture = function() {
-    return currentGesture; 
+window.getCurrentGesture = function () {
+  return currentGesture;
 };

@@ -1,6 +1,6 @@
 <?php
-// もしやることがあればここにPHPコードを追加
-// You can initialize database connection here if needed
+require_once 'env.php';
+$api_url = $API_CONFIG['api_url'];
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -185,8 +185,8 @@
   <header>
     SignSpeak: ジェスチャー翻訳ツール
     <select id="lang-select">
-      <option value="ja-JP">日本語</option>
       <option value="en-US">English</option>
+      <option value="ja-JP">日本語</option>
       <option value="zh-CN">中文</option>
     </select>
   </header>
@@ -248,6 +248,9 @@
   <footer>SignSpeak © 2025</footer>
 
   <!-- JS scripts -->
+  <script>
+    const API_URL = "<?= $api_url; ?>";
+  </script>
   <script src="translate.js" defer></script>
   <script src="speak.js" defer></script>
   <script src="history.js" defer></script>
