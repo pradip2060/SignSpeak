@@ -102,6 +102,17 @@ $api_url = $API_CONFIG['api_url'];
       min-width: 120px;
     }
 
+    .btn {
+      text-decoration: none;;
+      padding: 0.70rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #0078D7;
+      color: #ffffff;
+      cursor: pointer;
+      flex: 1;
+    }
+
     button:hover {
       background-color: #0078D7;
       color: #fff;
@@ -221,6 +232,9 @@ $api_url = $API_CONFIG['api_url'];
           <input type="radio" name="mode" value="server">
           <span>機械学習モード</span>
         </label>
+      </div>
+      <div>
+        <a href="asl_recognize.php" class="btn">リアルタイム（学習モデル）</a>
       </div>
 
       <div class="controls">
